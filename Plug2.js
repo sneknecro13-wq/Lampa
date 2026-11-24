@@ -1,6 +1,6 @@
 /**
  * Lampa plugin: "Залишок часу +"
- * Оверлей у плеєрі: скільки залишилось і о котрій закінчиться відео.
+ * Оверлей у плеєрі: скільки залишилось (із секундами) і о котрій закінчиться відео.
  * Показується, коли штатна панель плеєра сховалась.
  * ES5 — для старих Tizen/webOS.
  */
@@ -30,6 +30,8 @@
             size: 'Розмір тексту',
             opacity: 'Прозорість фону',
             format: 'Формат',
+            seconds: 'Показувати секунди',
+            seconds_d: 'Залишок тікає щосекунди разом із відео',
             hide_osd: 'Ховати, коли видно панель плеєра',
             hide_osd_d: 'Щоб не дублювати напис, поки відкрите меню',
             speed: 'Враховувати швидкість відтворення',
@@ -42,6 +44,7 @@
             f_end: 'Тільки час закінчення',
             f_full: 'Як в меню: 01:34:17 - Залишилось 1 г. 34 х.',
             f_exact: 'Точно: -01:34:09',
+            left: 'Залишилось',
             ends: 'Кінець о'
         },
         ru: {
@@ -52,6 +55,8 @@
             size: 'Размер текста',
             opacity: 'Прозрачность фона',
             format: 'Формат',
+            seconds: 'Показывать секунды',
+            seconds_d: 'Остаток тикает каждую секунду вместе с видео',
             hide_osd: 'Скрывать, когда видна панель плеера',
             hide_osd_d: 'Чтобы не дублировать надпись, пока открыто меню',
             speed: 'Учитывать скорость воспроизведения',
@@ -64,6 +69,7 @@
             f_end: 'Только время окончания',
             f_full: 'Как в меню: 01:34:17 - Осталось 1 ч. 34 м.',
             f_exact: 'Точно: -01:34:09',
+            left: 'Осталось',
             ends: 'Конец в'
         },
         en: {
@@ -74,6 +80,8 @@
             size: 'Text size',
             opacity: 'Background opacity',
             format: 'Format',
+            seconds: 'Show seconds',
+            seconds_d: 'Remaining time ticks every second along with the video',
             hide_osd: 'Hide while the player panel is visible',
             hide_osd_d: 'Avoids duplicating the label while the menu is open',
             speed: 'Account for playback speed',
@@ -86,6 +94,7 @@
             f_end: 'End time only',
             f_full: 'Like the panel: 01:34:17 - Left 1 h 34 m',
             f_exact: 'Exact: -01:34:09',
+            left: 'Left',
             ends: 'Ends at'
         }
     };
@@ -124,6 +133,22 @@
         return pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
 
+    // 56:12 або 1:34:09
+    function countdown(sec) {
+        var s = Math.max(0, Math.ceil(sec));
+        var h = Math.floor(s / 3600);
+        var m = Math.floor((s % 3600) / 60);
+        var r = s % 60;
+
+        return h > 0 ? h + ':' + pad(m) + ':' + pad(r) : pad(m) + ':' + pad(r);
+    }
+
+    function leftText(left) {
+        if (flag('tlp_seconds', true)) return tr('left') + ' ' + countdown(left);
+
+        return (Lampa.Lang.translate('title_left') + ' ' + Lampa.Utils.secondsToTimeHuman(left)).replace(/\s+$/, '');
+    }
+
     function playbackRate() {
         if (!flag('tlp_speed', true)) return 1;
         try {
@@ -139,22 +164,16 @@
         var left = Math.max(0, duration - current);
         var mode = String(opt('tlp_format', 'two'));
 
-        if (mode === 'exact') {
-            return '-' + Lampa.Utils.secondsToTime(left);
-        }
+        if (mode === 'exact') return '-' + Lampa.Utils.secondsToTime(left);
 
-        var human = (Lampa.Lang.translate('title_left') + ' ' + Lampa.Utils.secondsToTimeHuman(left)).replace(/\s+$/, '');
-
-        if (mode === 'full') {
-            return Lampa.Utils.secondsToTime(duration) + ' - ' + human;
-        }
+        if (mode === 'full') return Lampa.Utils.secondsToTime(duration) + ' - ' + leftText(left);
 
         var end = tr('ends') + ' ' + clock(Date.now() + (left / playbackRate()) * 1000);
 
         if (mode === 'end') return end;
-        if (mode === 'line') return human + ' \u00B7 ' + end;
+        if (mode === 'line') return leftText(left) + ' \u00B7 ' + end;
 
-        return human + '\n' + end; // two
+        return leftText(left) + '\n' + end; // two
     }
 
     /* ---------- DOM ---------- */
@@ -175,6 +194,7 @@
             'font-weight:500',
             'line-height:1.35',
             'white-space:pre',
+            'font-variant-numeric:tabular-nums',
             'text-shadow:0 0 0.3em rgba(0,0,0,0.9)'
         ].join(';');
 
@@ -263,7 +283,7 @@
         // На паузі timeupdate не приходить, а час закінчення йде вперед
         timer = setInterval(function () {
             if (last_event) update(last_event);
-        }, 10000);
+        }, 1000);
     }
 
     function stopTimer() {
@@ -322,6 +342,13 @@
                     default: 'two'
                 },
                 field: { name: tr('format') },
+                onChange: refresh
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: COMPONENT,
+                param: { name: 'tlp_seconds', type: 'trigger', default: true },
+                field: { name: tr('seconds'), description: tr('seconds_d') },
                 onChange: refresh
             });
 
